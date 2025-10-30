@@ -163,4 +163,302 @@
             };
 
             const addAIDescription = (breakId, breakItem) => {
-                const aiDescription = generateAIDescription(br
+                const aiDescription = generateAIDescription(breakItem.sport, breakItem.product);
+                database.ref('breaks/' + breakId).update({ description: aiDescription });
+                alert('Description IA générée!');
+            };
+
+            const approveReservation = (reservation) => {
+                const breakRef = database.ref('breaks/' + reservation.breakId);
+                
+                breakRef.once('value', (snapshot) => {
+                    const breakData = snapshot.val();
+                    const participants = breakData.participants || {};
+                    
+                    const newParticipantKey = database.ref().child('participants').push().key;
+                    participants[newParticipantKey] = {
+                        name: reservation.name,
+                        email: reservation.email,
+                        phone: reservation.phone,
+                        spots: reservation.spots,
+                        paymentStatus: 'paid'
+                    };
+
+                    breakRef.update({ participants: participants });
+                    database.ref('reservations/' + reservation.id).update({ status: 'approved' });
+                    
+                    alert('Réservation approuvée!');
+                });
+            };
+
+            const rejectReservation = (reservationId) => {
+                if (window.confirm('Voulez-vous vraiment refuser cette réservation?')) {
+                    database.ref('reservations/' + reservationId).update({ status: 'rejected' });
+                    alert('Réservation refusée');
+                }
+            };
+
+            const generateAnnouncementText = (breakItem) => {
+                const soldSpots = breakItem.participants ? Object.keys(breakItem.participants).reduce((sum, key) => {
+                    return sum + breakItem.participants[key].spots.length;
+                }, 0) : 0;
+                const availableSpots = breakItem.totalSpots - soldSpots;
+                
+                return `🏒 NOUVEAU BREAK! 🏒\n\n${breakItem.title}\n\n📦 Produit: ${breakItem.product}\n📊 Boîtes: ${breakItem.boxCount}\n💰 Prix: ${breakItem.pricePerSpot}$ par spot\n👥 Spots disponibles: ${availableSpots}/${breakItem.totalSpots}\n📅 Date: ${breakItem.date || 'À déterminer'}\n⏰ Heure: ${breakItem.time || 'À déterminer'}\n\n${breakItem.description || ''}\n\n🔥 Réservez: https://vootersbreak.vercel.app\n💳 Paiement: Interac à vootersbreak@gmail.com\n\n#${breakItem.sport} #cardsbreak`;
+            };
+
+            const copyAnnouncement = (breakItem) => {
+                const text = generateAnnouncementText(breakItem);
+                navigator.clipboard.writeText(text);
+                alert('Annonce copiée!');
+            };
+
+            const stats = {
+                total: breaks.length,
+                upcoming: breaks.filter(b => b.status === 'upcoming').length,
+                live: breaks.filter(b => b.status === 'live').length,
+                completed: breaks.filter(b => b.status === 'completed').length,
+                pending: pendingReservations.length
+            };
+
+            if (!isAuthenticated) {
+                return React.createElement('div', {
+                    className: "min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 flex items-center justify-center p-4"
+                },
+                    React.createElement('div', { className: "bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full" },
+                        React.createElement('div', { className: "text-center mb-8" },
+                            React.createElement('div', { className: "text-6xl mb-4" }, "🔒"),
+                            React.createElement('h1', { className: "text-3xl font-bold text-gray-800 mb-2" }, "Admin Login"),
+                            React.createElement('p', { className: "text-gray-600" }, "Vooters Break")
+                        ),
+                        React.createElement('div', { className: "space-y-4" },
+                            React.createElement('input', {
+                                type: "password",
+                                value: password,
+                                onChange: (e) => setPassword(e.target.value),
+                                onKeyPress: (e) => e.key === 'Enter' && handleLogin(),
+                                placeholder: "Mot de passe",
+                                className: "w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-indigo-500 focus:outline-none"
+                            }),
+                            React.createElement('button', {
+                                onClick: handleLogin,
+                                className: "w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-3 rounded-lg font-semibold"
+                            }, "Se connecter")
+                        )
+                    )
+                );
+            }
+
+            return React.createElement('div', { className: "min-h-screen bg-gradient-to-br from-gray-50 to-gray-100" },
+                React.createElement('div', { className: "max-w-7xl mx-auto p-4 sm:p-6" },
+                    React.createElement('div', { className: "flex items-center justify-between mb-8 pt-6" },
+                        React.createElement('div', {},
+                            React.createElement('h1', { className: "text-4xl font-bold text-gray-800 mb-2" }, "Admin - Vooters Break")
+                        ),
+                        React.createElement('div', { className: "flex gap-3" },
+                            React.createElement('button', {
+                                onClick: () => setShowAddBreak(!showAddBreak),
+                                className: "bg-indigo-600 text-white px-6 py-3 rounded-lg font-semibold"
+                            }, "+ Nouveau Break"),
+                            React.createElement('button', {
+                                onClick: () => setIsAuthenticated(false),
+                                className: "bg-red-600 text-white px-4 py-3 rounded-lg font-semibold"
+                            }, "Déconnexion")
+                        )
+                    ),
+
+                    React.createElement('div', { className: "grid grid-cols-2 sm:grid-cols-5 gap-4 mb-6" },
+                        [
+                            { label: "Total", value: stats.total },
+                            { label: "À venir", value: stats.upcoming },
+                            { label: "Live", value: stats.live },
+                            { label: "Complétés", value: stats.completed },
+                            { label: "Réservations", value: stats.pending, hasNotif: stats.pending > 0 }
+                        ].map((stat, idx) =>
+                            React.createElement('div', {
+                                key: idx,
+                                className: "bg-white rounded-xl shadow-md p-4 relative"
+                            },
+                                React.createElement('p', { className: "text-sm text-gray-600 mb-2" }, stat.label),
+                                React.createElement('p', { className: "text-2xl font-bold" }, stat.value),
+                                stat.hasNotif && React.createElement('span', {
+                                    className: "absolute top-2 right-2 w-3 h-3 bg-red-500 rounded-full animate-pulse"
+                                })
+                            )
+                        )
+                    ),
+
+                    React.createElement('div', { className: "flex gap-2 mb-6 bg-white rounded-lg p-1 shadow-sm" },
+                        React.createElement('button', {
+                            onClick: () => setActiveTab('breaks'),
+                            className: `flex-1 py-3 rounded-md font-medium ${activeTab === 'breaks' ? 'bg-indigo-600 text-white' : 'text-gray-600'}`
+                        }, "📦 Breaks"),
+                        React.createElement('button', {
+                            onClick: () => setActiveTab('reservations'),
+                            className: `flex-1 py-3 rounded-md font-medium relative ${activeTab === 'reservations' ? 'bg-indigo-600 text-white' : 'text-gray-600'}`
+                        },
+                            `🔔 Réservations (${stats.pending})`,
+                            stats.pending > 0 && React.createElement('span', {
+                                className: "absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full animate-pulse"
+                            })
+                        )
+                    ),
+
+                    showAddBreak && activeTab === 'breaks' && React.createElement('div', { className: "bg-white rounded-xl shadow-lg p-6 mb-6" },
+                        React.createElement('h2', { className: "text-2xl font-bold mb-6" }, "Créer un nouveau break"),
+                        React.createElement('div', { className: "grid sm:grid-cols-2 gap-4 mb-4" },
+                            React.createElement('input', {
+                                type: "text",
+                                value: newBreak.title,
+                                onChange: (e) => setNewBreak({...newBreak, title: e.target.value}),
+                                placeholder: "Titre *",
+                                className: "px-4 py-2 border rounded-lg"
+                            }),
+                            React.createElement('select', {
+                                value: newBreak.sport,
+                                onChange: (e) => setNewBreak({...newBreak, sport: e.target.value}),
+                                className: "px-4 py-2 border rounded-lg"
+                            },
+                                React.createElement('option', { value: "hockey" }, "Hockey"),
+                                React.createElement('option', { value: "baseball" }, "Baseball"),
+                                React.createElement('option', { value: "basketball" }, "Basketball"),
+                                React.createElement('option', { value: "football" }, "Football")
+                            ),
+                            React.createElement('input', {
+                                type: "text",
+                                value: newBreak.product,
+                                onChange: (e) => setNewBreak({...newBreak, product: e.target.value}),
+                                placeholder: "Produit *",
+                                className: "px-4 py-2 border rounded-lg"
+                            }),
+                            React.createElement('input', {
+                                type: "number",
+                                value: newBreak.boxCount,
+                                onChange: (e) => setNewBreak({...newBreak, boxCount: parseInt(e.target.value) || 1}),
+                                placeholder: "Boîtes",
+                                className: "px-4 py-2 border rounded-lg"
+                            }),
+                            React.createElement('input', {
+                                type: "number",
+                                value: newBreak.pricePerSpot,
+                                onChange: (e) => setNewBreak({...newBreak, pricePerSpot: e.target.value}),
+                                placeholder: "Prix/spot *",
+                                className: "px-4 py-2 border rounded-lg"
+                            }),
+                            React.createElement('input', {
+                                type: "number",
+                                value: newBreak.totalSpots,
+                                onChange: (e) => setNewBreak({...newBreak, totalSpots: parseInt(e.target.value) || 32}),
+                                placeholder: "Spots",
+                                className: "px-4 py-2 border rounded-lg"
+                            }),
+                            React.createElement('input', {
+                                type: "date",
+                                value: newBreak.date,
+                                onChange: (e) => setNewBreak({...newBreak, date: e.target.value}),
+                                className: "px-4 py-2 border rounded-lg"
+                            }),
+                            React.createElement('input', {
+                                type: "time",
+                                value: newBreak.time,
+                                onChange: (e) => setNewBreak({...newBreak, time: e.target.value}),
+                                className: "px-4 py-2 border rounded-lg"
+                            })
+                        ),
+                        React.createElement('textarea', {
+                            value: newBreak.description,
+                            onChange: (e) => setNewBreak({...newBreak, description: e.target.value}),
+                            placeholder: "Description",
+                            rows: "3",
+                            className: "w-full px-4 py-2 border rounded-lg mb-4"
+                        }),
+                        React.createElement('div', { className: "flex gap-3" },
+                            React.createElement('button', {
+                                onClick: addBreak,
+                                className: "flex-1 bg-indigo-600 text-white py-3 rounded-lg font-semibold"
+                            }, "✅ Créer"),
+                            React.createElement('button', {
+                                onClick: () => setShowAddBreak(false),
+                                className: "px-6 py-3 border-2 rounded-lg font-semibold"
+                            }, "Annuler")
+                        )
+                    ),
+
+                    activeTab === 'breaks' ?
+                        React.createElement('div', { className: "space-y-4" },
+                            breaks.length === 0 ?
+                                React.createElement('div', { className: "bg-white rounded-xl shadow-md p-12 text-center" },
+                                    React.createElement('p', { className: "text-gray-500 text-lg" }, "Aucun break")
+                                )
+                            :
+                                breaks.map(breakItem => React.createElement('div', {
+                                    key: breakItem.id,
+                                    className: "bg-white rounded-xl shadow-md p-6"
+                                },
+                                    React.createElement('div', { className: "flex justify-between mb-4" },
+                                        React.createElement('div', {},
+                                            React.createElement('h3', { className: "text-xl font-bold" }, breakItem.title),
+                                            React.createElement('p', { className: "text-gray-600" }, breakItem.product)
+                                        ),
+                                        React.createElement('button', {
+                                            onClick: () => deleteBreak(breakItem.id),
+                                            className: "text-red-600"
+                                        }, "🗑️")
+                                    ),
+                                    React.createElement('div', { className: "flex flex-wrap gap-2" },
+                                        React.createElement('button', {
+                                            onClick: () => copyAnnouncement(breakItem),
+                                            className: "px-4 py-2 bg-blue-600 text-white rounded-lg text-sm"
+                                        }, "📢 Annonce"),
+                                        React.createElement('button', {
+                                            onClick: () => addAIDescription(breakItem.id, breakItem),
+                                            className: "px-4 py-2 bg-purple-600 text-white rounded-lg text-sm"
+                                        }, "✨ IA"),
+                                        React.createElement('button', {
+                                            onClick: () => updateBreakStatus(breakItem.id, 'live'),
+                                            className: "px-4 py-2 bg-red-600 text-white rounded-lg text-sm"
+                                        }, "🔴 Live"),
+                                        React.createElement('button', {
+                                            onClick: () => updateBreakStatus(breakItem.id, 'completed'),
+                                            className: "px-4 py-2 bg-gray-600 text-white rounded-lg text-sm"
+                                        }, "✅ Terminer")
+                                    )
+                                ))
+                        )
+                    :
+                        React.createElement('div', { className: "space-y-4" },
+                            pendingReservations.length === 0 ?
+                                React.createElement('div', { className: "bg-white rounded-xl shadow-md p-12 text-center" },
+                                    React.createElement('p', { className: "text-gray-500 text-lg" }, "Aucune réservation")
+                                )
+                            :
+                                pendingReservations.map(reservation => React.createElement('div', {
+                                    key: reservation.id,
+                                    className: "bg-white rounded-xl shadow-md p-6"
+                                },
+                                    React.createElement('h3', { className: "text-xl font-bold mb-2" }, reservation.name),
+                                    React.createElement('p', { className: "text-gray-600 mb-2" }, reservation.breakTitle),
+                                    React.createElement('p', { className: "font-semibold text-green-600 mb-4" }, `${reservation.totalAmount}$ - Spots: ${reservation.spots.join(', ')}`),
+                                    React.createElement('div', { className: "flex gap-3" },
+                                        React.createElement('button', {
+                                            onClick: () => approveReservation(reservation),
+                                            className: "flex-1 bg-green-600 text-white py-3 rounded-lg font-semibold"
+                                        }, "✅ Approuver"),
+                                        React.createElement('button', {
+                                            onClick: () => rejectReservation(reservation.id),
+                                            className: "flex-1 bg-red-600 text-white py-3 rounded-lg font-semibold"
+                                        }, "❌ Refuser")
+                                    )
+                                ))
+                        )
+                )
+            );
+        }
+
+        ReactDOM.render(
+            React.createElement(VootersBreakAdmin),
+            document.getElementById('root')
+        );
+    </script>
+</body>
+</html>
