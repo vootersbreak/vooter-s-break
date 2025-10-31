@@ -87,9 +87,18 @@
 
             const getAvailableSpots = (breakItem) => {
                 const takenSpots = new Set();
+                
+                // Spots des participants approuvés
                 if (breakItem.participants) {
                     Object.values(breakItem.participants).forEach(p => {
                         p.spots.forEach(spot => takenSpots.add(parseInt(spot)));
+                    });
+                }
+                
+                // NOUVEAU: Spots des réservations en attente (bloqués aussi!)
+                if (breakItem.pendingSpots) {
+                    Object.values(breakItem.pendingSpots).forEach(spots => {
+                        spots.forEach(spot => takenSpots.add(parseInt(spot)));
                     });
                 }
                 
@@ -104,11 +113,21 @@
 
             const getSpotStatus = (breakItem, spotNumber) => {
                 const takenSpots = new Set();
+                
+                // Spots des participants approuvés
                 if (breakItem.participants) {
                     Object.values(breakItem.participants).forEach(p => {
                         p.spots.forEach(spot => takenSpots.add(parseInt(spot)));
                     });
                 }
+                
+                // NOUVEAU: Spots des réservations en attente
+                if (breakItem.pendingSpots) {
+                    Object.values(breakItem.pendingSpots).forEach(spots => {
+                        spots.forEach(spot => takenSpots.add(parseInt(spot)));
+                    });
+                }
+                
                 return takenSpots.has(spotNumber);
             };
 
